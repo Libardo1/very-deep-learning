@@ -14,11 +14,9 @@ import os
 import re
 import sys
 import tarfile
-import time, datetime
-
+import time
 
 import tensorflow as tf
-import numpy as np
 
 from six.moves import urllib
 
@@ -49,7 +47,7 @@ tf.app.flags.DEFINE_boolean('log_device_placement', False,
 #                            """Train the model using fp16.""")
 
 
-FLAGS.batch_size = 32
+
 
 # Global constants describing the CIFAR-10 data set.
 IMAGE_SIZE = cifar10_input.IMAGE_SIZE
@@ -302,7 +300,7 @@ def train():
 
     summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 
-    for step in range(FLAGS.max_steps):
+    for step in xrange(FLAGS.max_steps):
       start_time = time.time()
       _, loss_value = sess.run([train_op, loss])
       duration = time.time() - start_time
@@ -316,7 +314,7 @@ def train():
 
         format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
                       'sec/batch)')
-        print (format_str % (datetime.datetime.now(), step, loss_value,
+        print (format_str % (datetime.now(), step, loss_value,
                              examples_per_sec, sec_per_batch))
 
       if step % 100 == 0:
@@ -330,14 +328,13 @@ def train():
 
 
 # In[ ]:
-if __name__ == '__main__':
-    if tf.gfile.Exists('train/'):
-        #tf.gfile.DeleteRecursively('train/')  # FLAGS.train_dir)
-        #tf.gfile.MakeDirs('/train')  # FLAGS.train_dir)
-        train()
 
 
 #cifar10.maybe_download_and_extract()
+if tf.gfile.Exists('/tmp/cifar10_train'):
+    tf.gfile.DeleteRecursively('/tmp/cifar10_train')  #FLAGS.train_dir)
+    tf.gfile.MakeDirs('/tmp/cifar10_train')#FLAGS.train_dir)
+    train()
 
 
 # In[ ]:
@@ -346,7 +343,6 @@ if __name__ == '__main__':
 
 
 # In[ ]:
-
 
 
 
