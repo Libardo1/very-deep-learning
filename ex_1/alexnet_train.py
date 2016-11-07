@@ -463,6 +463,24 @@ def load_model(saver, sess, chkpnts_dir):
 		print("Training with fresh parameters")
 		sess.run(tf.initialize_all_variables())
 
+def get_loss(logits, labels):
+	#labels = tf.cast(labels, tf.int64)
+	sparse_labels = tf.reshape(labels, [-1, 1])
+	derived_size = tf.shape(labels)[0]
+	indices = tf.reshape(tf.range(0, derived_size, 1), [-1, 1])
+	concated = tf.concat(1, [indices, sparse_labels])
+	outshape = tf.pack([derived_size, NUM_CLASSES])
+	labels = tf.sparse_to_dense(concated, outshape, 1.0, 0.0)
+
+	cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
+	  logits, labels, name='cross_entropy_per_example')
+	cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
+	tf.add_to_collection('losses', cross_entropy_mean)
+
+	# The total loss is defined as the cross entropy loss plus all of the weight
+	# decay terms (L2 loss).
+	return tf.add_n(tf.get_collection('losses'), name='total_loss')
+
 def train():
 	"""Train CIFAR-10 for a number of steps."""
 	with tf.Graph().as_default():
@@ -488,7 +506,7 @@ def train():
 		# logits = cifar10.cifar10.inference(images)
 
 		# Calculate loss.
-		loss = cifar10.cifar10.loss(logits, labels)
+		loss = get_loss(logits, labels)
 
 		# Build a Graph that trains the model with one batch of examples and
 		# updates the model parameters.
@@ -525,8 +543,10 @@ def train():
 			_, loss_value = sess.run([train_op, loss])
 			duration = time.time() - start_time
 
-			assert not np.isnan(
-				loss_value), 'Model diverged with loss = NaN'
+			if np.isnan(loss_value):
+				print("Diverged and ignored")
+				continue
+
 
 			if step % FLAGS.steps_per_checkpoint == 0:
 				num_examples_per_step = FLAGS.batch_size
