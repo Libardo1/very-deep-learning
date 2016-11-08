@@ -2,3 +2,4 @@ data/
 .ipynb_checkpoints/
 .idea/
 ex_1/model_*
+ex_1/results/

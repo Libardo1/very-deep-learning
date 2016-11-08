@@ -579,7 +579,7 @@ def train():
 		# Create a saver.
 		saver = tf.train.Saver(tf.all_variables())
 		config = tf.ConfigProto(log_device_placement=FLAGS.log_device_placement)
-		config.gpu_options.per_process_gpu_memory_fraction=0.5
+		config.gpu_options.per_process_gpu_memory_fraction=1.0
 		sess = tf.Session(config=config)
 		summary_op = tf.merge_all_summaries()
 		checkpoints_folder = FLAGS.train_dir
@@ -650,4 +650,4 @@ if __name__ == '__main__':
 	if FLAGS.train:
 		train()
 	elif FLAGS.eval:
-		evaluate(real_eval_dir + FLAGS.train_dir + ".csv", "a")
+		evaluate(real_eval_dir + FLAGS.train_dir + ".csv")
