@@ -521,8 +521,12 @@ def evaluate(dir):
 	step = 0
 
 	while step < num_iter and not coord.should_stop():
+
 		predictions = sess.run([top_k_op])
 		true_count += np.sum(predictions)
+		if step % 100:
+			step_precision = float(true_count) / float((step * FLAGS.batch_size))
+			print('%i\t%s: precision @ 1 = %.3f' % (datetime.now(), step_precision, step))
 		step += 1
 
 	# Compute precision @ 1.
@@ -579,7 +583,7 @@ def train():
 		# Create a saver.
 		saver = tf.train.Saver(tf.all_variables())
 		config = tf.ConfigProto(log_device_placement=FLAGS.log_device_placement)
-		config.gpu_options.per_process_gpu_memory_fraction=0.5
+		config.gpu_options.per_process_gpu_memory_fraction=1.0
 		sess = tf.Session(config=config)
 		summary_op = tf.merge_all_summaries()
 		checkpoints_folder = FLAGS.train_dir
@@ -650,4 +654,4 @@ if __name__ == '__main__':
 	if FLAGS.train:
 		train()
 	elif FLAGS.eval:
-		evaluate(real_eval_dir + FLAGS.train_dir + ".csv", "a")
+		evaluate(real_eval_dir + FLAGS.train_dir + ".csv")
