@@ -1,6 +1,6 @@
 
 report.pdf: report.md
-	pandoc report.md -o report.pdf
+	pandoc report.md --bibliography=report.bib -o report.pdf
 
 .PHONY: clean
 clean:
