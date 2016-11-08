@@ -38,11 +38,18 @@ tf.app.flags.DEFINE_string('activation', 'relu',
 	"""Directory where to write event logs """
 	"""and checkpoint.""")
 
+tf.app.flags.DEFINE_string('eval_dir', './results/',
+	"""Directory where to write event logs """
+	"""and checkpoint.""")
+
 tf.app.flags.DEFINE_float('learning_rate', 0.001,
 	"The rate with which the weights are reduced during optimization.")
 
 tf.app.flags.DEFINE_integer('max_steps', 1000000,
 	"""Number of batches to run.""")
+
+tf.app.flags.DEFINE_integer('num_examples', 10000,
+	"""Number of examples to run.""")
 
 tf.app.flags.DEFINE_integer('model', 5,
 	"An integer to create a model architecture. defaults to 1 which is a small "
@@ -52,6 +59,12 @@ tf.app.flags.DEFINE_integer('steps_per_checkpoint', 1000,
 	"""Number of batches to run.""")
 
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
+	"""Whether to log device placement.""")
+
+tf.app.flags.DEFINE_boolean('train', False,
+	"""Whether to log device placement.""")
+
+tf.app.flags.DEFINE_boolean('eval', False,
 	"""Whether to log device placement.""")
 
 #FLAGS.batch_size = 100
@@ -313,7 +326,7 @@ def get_softmax_layer(prev, name, size):
 # In[11]:
 
 def gen_model_1(images):
-	images = tf.image.resize_images(images, 244, 244,
+	images = tf.image.resize_images(images, [244, 244],
 		method=tf.image.ResizeMethod.BICUBIC)
 	conv1 = gen_conv_layer(images, 'conv1', [11, 11, 3, 100], [1, 4, 4, 1],
 		filter_img=True)
@@ -340,7 +353,7 @@ def gen_model_1(images):
 	return smx
 
 def gen_model_2(images):
-	images = tf.image.resize_images(images, 244, 244,
+	images = tf.image.resize_images(images, [244, 244],
 		method=tf.image.ResizeMethod.BICUBIC)
 	conv1 = gen_conv_layer(images, 'conv1', [11, 11, 3, 100], [1, 4, 4, 1],
 		filter_img=True)
@@ -368,7 +381,7 @@ def gen_model_2(images):
 	return smx
 
 def gen_model_3(images):
-	images = tf.image.resize_images(images, 244, 244,
+	images = tf.image.resize_images(images, [244, 244],
 		method=tf.image.ResizeMethod.BICUBIC)
 	conv1 = gen_conv_layer(images, 'conv1', [11, 11, 3, 100], [1, 4, 4, 1],
 		filter_img=True)
@@ -397,7 +410,7 @@ def gen_model_3(images):
 	return smx
 
 def gen_model_4(images):
-	images = tf.image.resize_images(images, 244, 244,
+	images = tf.image.resize_images(images, [244, 244],
 		method=tf.image.ResizeMethod.BICUBIC)
 	conv1 = gen_conv_layer(images, 'conv1', [11, 11, 3, 100], [1, 4, 4, 1],
 		filter_img=True)
@@ -427,7 +440,7 @@ def gen_model_4(images):
 	return smx
 
 def gen_model_small(images):
-	images = tf.image.resize_images(images, 244, 244,
+	images = tf.image.resize_images(images,[ 244, 244],
 		method=tf.image.ResizeMethod.BICUBIC)
 	conv1 = gen_conv_layer(images, 'conv1', [11, 11, 3, 64], [1, 4, 4, 1],
 		filter_img=True)
@@ -463,6 +476,55 @@ def load_model(saver, sess, chkpnts_dir):
 		print("Training with fresh parameters")
 		sess.run(tf.initialize_all_variables())
 
+def evaluate(dir):
+	eval_data = FLAGS.data_dir
+	images_eval, labels_eval = cifar10.cifar10.inputs(eval_data=eval_data)
+	logits = None
+	top_k_op = None
+	if FLAGS.model == 1:
+		logits_eval = gen_model_1(images_eval)
+		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+	elif FLAGS.model == 2:
+		logits_eval = gen_model_2(images_eval)
+		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+	if FLAGS.model == 3:
+		logits_eval = gen_model_3(images_eval)
+		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+	if FLAGS.model == 4:
+		logits_eval = gen_model_4(images_eval)
+		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+	if FLAGS.model == 5:
+		logits_eval = gen_model_small(images_eval)
+		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+
+		# Create a saver.
+	saver = tf.train.Saver(tf.all_variables())
+	sess = tf.Session(config=tf.ConfigProto(
+		log_device_placement=FLAGS.log_device_placement))
+	checkpoints_folder = FLAGS.train_dir
+	if not os.path.exists(checkpoints_folder):
+		os.makedirs(checkpoints_folder)
+	load_model(saver, sess, FLAGS.train_dir)
+
+		# Start the queue runners.
+	coord = tf.train.Coordinator()
+	num_iter = int(math.ceil(FLAGS.num_examples / FLAGS.batch_size))
+	true_count = 0  # Counts the number of correct predictions.
+	total_sample_count = num_iter * FLAGS.batch_size
+	step = 0
+
+	while step < num_iter and not coord.should_stop():
+		predictions = sess.run([top_k_op])
+		true_count += np.sum(predictions)
+		step += 1
+
+	# Compute precision @ 1.
+	precision = true_count / total_sample_count
+	print('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
+
+	with open(dir) as myfile:
+		myfile.write(str(datetime.now()) + "," + str(step) + "," + str(precision))
+
 def train():
 	"""Train CIFAR-10 for a number of steps."""
 	with tf.Graph().as_default():
@@ -471,20 +533,33 @@ def train():
 		# Get images and labels for CIFAR-10.
 		images, labels = cifar10.cifar10.distorted_inputs()
 
+
+
+		# Build a Graph that computes the logits predictions from the
+		# inference model.
+
+
+		# Calculate predictions.
+
 		# Build a Graph that computes the logits predictions from the
 		# inference model.
 		#
 		logits = None
 		if FLAGS.model == 1:
 			logits = gen_model_1(images)
+
 		elif FLAGS.model == 2:
 			logits = gen_model_2(images)
+
 		if FLAGS.model == 3:
 			logits = gen_model_3(images)
+
 		if FLAGS.model == 4:
 			logits = gen_model_4(images)
+
 		if FLAGS.model == 5:
 			logits = gen_model_small(images)
+
 		# logits = cifar10.cifar10.inference(images)
 
 		# Calculate loss.
@@ -550,10 +625,21 @@ def train():
 					'model.ckpt')
 				saver.save(sess, checkpoint_path, global_step=step)
 
+
 # def prepare_data():
 
 
 if __name__ == '__main__':
+	real_eval_dir = os.path.join(FLAGS.eval_dir,FLAGS.train_dir)
+	if not tf.gfile.Exists(FLAGS.eval_dir):
+		os.makedirs(real_eval_dir)
+	with open(real_eval_dir + FLAGS.train_dir + ".csv", "a") as myfile:
+		myfile.write(str("timestamp,step,value"))
 	if not tf.gfile.Exists(FLAGS.train_dir):
 		os.makedirs(FLAGS.train_dir)
-	train()
+	if not tf.gfile.Exists(FLAGS.train_dir):
+		os.makedirs(FLAGS.train_dir)
+	if FLAGS.train:
+		train()
+	elif FLAGS.eval:
+		evaluate(real_eval_dir + FLAGS.train_dir + ".csv", "a")
