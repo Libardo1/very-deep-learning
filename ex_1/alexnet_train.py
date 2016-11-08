@@ -385,6 +385,20 @@ def gen_model_2(images):
 	smx = get_softmax_layer(fcn3, 'softmax', [1000, 10])
 	return smx
 
+def convert_labels_to_one_hot(labels):
+	sparse_labels = tf.reshape(labels, [-1, 1])
+	derived_size = tf.shape(labels)[0]
+	indices = tf.reshape(tf.range(0, derived_size, 1), [-1, 1])
+	concated = tf.concat(1, [indices, sparse_labels])
+	outshape = tf.pack([derived_size, NUM_CLASSES])
+	labels = tf.sparse_to_dense(concated, outshape, 1.0, 0.0)
+	return labels
+
+def gen_accuracy(gt_labels, labels):
+	correct_prediction = tf.equal(tf.argmax(labels, 1), tf.argmax(gt_labels, 1))
+	accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+	return accuracy
+
 def gen_model_3(images):
 
 	images = tf.image.resize_images(images,  [244, 244],
@@ -486,51 +500,56 @@ def load_model(saver, sess, chkpnts_dir):
 def evaluate(dir):
 	eval_data = FLAGS.data_dir
 	images_eval, labels_eval = cifar10.cifar10.inputs(eval_data=eval_data)
+	one_hot_eval_labels = convert_labels_to_one_hot(labels_eval)
 	logits = None
 	top_k_op = None
 	if FLAGS.model == 1:
 		logits_eval = gen_model_1(images_eval)
-		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+
 	elif FLAGS.model == 2:
 		logits_eval = gen_model_2(images_eval)
-		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+
 	if FLAGS.model == 3:
 		logits_eval = gen_model_3(images_eval)
-		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+
 	if FLAGS.model == 4:
 		logits_eval = gen_model_4(images_eval)
-		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+
 	if FLAGS.model == 5:
 		logits_eval = gen_model_small(images_eval)
-		top_k_op = tf.nn.in_top_k(logits_eval, labels_eval, 1)
+
 
 		# Create a saver.
 	saver = tf.train.Saver(tf.all_variables())
-	sess = tf.Session(config=tf.ConfigProto(
-		log_device_placement=FLAGS.log_device_placement))
+	config = tf.ConfigProto(log_device_placement=FLAGS.log_device_placement)
+	#config.gpu_options.per_process_gpu_memory_fraction = 1.0
+	sess = tf.Session(config=config)
+
 	checkpoints_folder = FLAGS.train_dir
 	if not os.path.exists(checkpoints_folder):
 		os.makedirs(checkpoints_folder)
 	load_model(saver, sess, FLAGS.train_dir)
 
+	acc = gen_accuracy(one_hot_eval_labels, logits_eval)
 		# Start the queue runners.
-	coord = tf.train.Coordinator()
+	tf.train.start_queue_runners(sess=sess)
 	num_iter = int(math.ceil(FLAGS.num_examples / FLAGS.batch_size))
 	true_count = 0  # Counts the number of correct predictions.
 	total_sample_count = num_iter * FLAGS.batch_size
 	step = 0
+	avg_acc = 0.0
+	while step < num_iter:
 
-	while step < num_iter and not coord.should_stop():
-		predictions = sess.run([top_k_op])
-		true_count += np.sum(predictions)
+		acc_val = sess.run([acc])
+		avg_acc += acc_val[0]
+		if step % 500 == 0:
+			print('%i\t%s: acc @ 1 = %.3f' % (step, datetime.datetime.now(), acc_val[0]))
 		step += 1
 
 	# Compute precision @ 1.
-	precision = true_count / total_sample_count
-	print('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
-
-	with open(dir) as myfile:
-		myfile.write(str(datetime.now()) + "," + str(step) + "," + str(precision))
+	avg_acc = avg_acc / num_iter
+	with open(dir,"a") as myfile:
+		myfile.write(str(datetime.datetime.now()) + "," + str(avg_acc) + "\n")
 
 def train():
 	"""Train CIFAR-10 for a number of steps."""
@@ -579,7 +598,7 @@ def train():
 		# Create a saver.
 		saver = tf.train.Saver(tf.all_variables())
 		config = tf.ConfigProto(log_device_placement=FLAGS.log_device_placement)
-		config.gpu_options.per_process_gpu_memory_fraction=1.0
+		#config.gpu_options.per_process_gpu_memory_fraction=.4
 		sess = tf.Session(config=config)
 		summary_op = tf.merge_all_summaries()
 		checkpoints_folder = FLAGS.train_dir
@@ -638,11 +657,7 @@ def train():
 
 
 if __name__ == '__main__':
-	real_eval_dir = os.path.join(FLAGS.eval_dir,FLAGS.train_dir)
-	if not tf.gfile.Exists(FLAGS.eval_dir):
-		os.makedirs(real_eval_dir)
-	with open(real_eval_dir + FLAGS.train_dir + ".csv", "a") as myfile:
-		myfile.write(str("timestamp,step,value"))
+
 	if not tf.gfile.Exists(FLAGS.train_dir):
 		os.makedirs(FLAGS.train_dir)
 	if not tf.gfile.Exists(FLAGS.train_dir):
@@ -650,4 +665,11 @@ if __name__ == '__main__':
 	if FLAGS.train:
 		train()
 	elif FLAGS.eval:
-		evaluate(real_eval_dir + FLAGS.train_dir + ".csv")
+		real_eval_dir = os.path.join(FLAGS.eval_dir, FLAGS.train_dir)
+		result_file_path = os.path.join(real_eval_dir, FLAGS.train_dir + ".csv")
+		if not tf.gfile.Exists(real_eval_dir):
+			os.makedirs(real_eval_dir)
+		if not tf.gfile.Exists(result_file_path):
+			with open(result_file_path, "a") as myfile:
+				myfile.write(str("timestamp,value\n"))
+		evaluate(result_file_path)
